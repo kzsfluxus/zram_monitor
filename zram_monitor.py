@@ -39,7 +39,6 @@ def b2mb(x: float) -> float:
 
 
 def safe_addstr(stdscr, y: int, x: int, s: str, attr: int = 0):
-    """Write clipped string safely (avoid curses error on small terminals)."""
     try:
         h, w = stdscr.getmaxyx()
         if y < 0 or y >= h or x >= w:
@@ -79,7 +78,6 @@ def draw_bar(stdscr, y: int, x: int, width: int, ratio: float, label: str = ""):
 
 
 def sparkline(values, width: int) -> str:
-    """values: list of floats in [0..1]. returns string length == width."""
     if width <= 0:
         return ""
     if not values:
@@ -105,7 +103,6 @@ def trim_deque(dq: deque, maxlen: int):
 # ---------- data collection ----------
 
 def get_mem_free_b() -> Tuple[int, int]:
-    """Returns (total_ram_bytes, available_ram_bytes)."""
     out = sh(["free", "-b"])
     lines = out.strip().split("\n")
     if len(lines) < 2:
@@ -153,7 +150,6 @@ def get_swaps_from_proc() -> Tuple[int, int, int, int]:
 
 
 def get_zramctl_bytes() -> Optional[Dict]:
-    """Sum across zram devices: disksize, data, compr (bytes) + algos + ratios."""
     out = sh(["zramctl", "--bytes"])
     if "no devices found" in out.lower():
         return None
@@ -200,11 +196,6 @@ def get_zramctl_bytes() -> Optional[Dict]:
 def oom_risk(total_ram: int, avail_ram: int,
              zram_phys_used: int, zram_phys_limit: int,
              other_swap_total: int, other_swap_used: int) -> Tuple[str, int, str]:
-    """
-    Returns (label, color_pair, explanation)
-
-    Note: Risk evaluation includes non-zram swap as requested.
-    """
     if total_ram <= 0:
         return ("UNKNOWN", 2, "no RAM data")
 
@@ -268,9 +259,7 @@ def main(stdscr):
         stdscr.erase()
         h, w = stdscr.getmaxyx()
 
-        # calculate graph width NOW (depends on terminal width)
         graph_w = max(10, w - 18)
-        # dynamic history length: ~6 screens worth, min 60
         dyn_hist_len = max(60, graph_w * 6)
 
         try:
@@ -296,28 +285,25 @@ def main(stdscr):
         zram_phys_used = zram["compr"]
         zram_phys_ratio = (zram_phys_used / zram_phys_limit) if zram_phys_limit > 0 else 0.0
 
-        # "Other swap" is disk-based swap partition/file (non-zram)
         other_swap_ratio = (oswap_used / oswap_total) if oswap_total > 0 else 0.0
         oswap_free = max(0, oswap_total - oswap_used)
 
         cons_ratio = float(zram["cons_ratio"])
         real_ratio = float(zram["real_ratio"])
 
-        # ZRAM "logical capacity" models (RAM + ZRAM only)
-        cons_zram_capacity = zram_phys_limit * cons_ratio
-        opt_zram_capacity = zram_phys_limit * real_ratio
+        # HELYES képlet: extra = ZRAM_limit * (ratio - 1)
+        extra_cons = zram_phys_limit * max(0.0, (cons_ratio - 1.0))
+        extra_opt = zram_phys_limit * max(0.0, (real_ratio - 1.0))
 
-        total_cons_mem = total_ram + cons_zram_capacity
-        total_opt_mem = total_ram + opt_zram_capacity
+        total_cons_mem = total_ram + extra_cons
+        total_opt_mem = total_ram + extra_opt
 
-        free_cons_mem = avail_ram + cons_zram_capacity
-        free_opt_mem = avail_ram + opt_zram_capacity
+        free_cons_mem = avail_ram + extra_cons
+        free_opt_mem = avail_ram + extra_opt
 
-        # Free ratios for history (mem-only)
         free_cons_mem_ratio = (free_cons_mem / total_cons_mem) if total_cons_mem > 0 else 0.0
         free_opt_mem_ratio = (free_opt_mem / total_opt_mem) if total_opt_mem > 0 else 0.0
 
-        # Efficiency/gain (informational)
         gain_bytes = max(0, zram["data"] - zram["compr"])
         efficiency = (zram["data"] / zram_phys_limit) if zram_phys_limit > 0 else 0.0
 
@@ -327,7 +313,6 @@ def main(stdscr):
             oswap_total, oswap_used
         )
 
-        # Append history (then trim dynamically for resize)
         hist_ram.append(clamp(ram_used_ratio, 0.0, 1.0))
         hist_zram.append(clamp(zram_phys_ratio, 0.0, 1.0))
         hist_other_swap.append(clamp(other_swap_ratio, 0.0, 1.0))
@@ -340,7 +325,6 @@ def main(stdscr):
         trim_deque(hist_free_cons_mem, dyn_hist_len)
         trim_deque(hist_free_opt_mem, dyn_hist_len)
 
-        # ---------- layout ----------
         safe_addstr(stdscr, 0, 2, "ZRAM Monitor", curses.A_BOLD | curses.color_pair(4))
         safe_addstr(stdscr, 0, w - 26, f"refresh: {refresh:.1f}s  (+/-)  q", curses.color_pair(4))
 
@@ -390,7 +374,6 @@ def main(stdscr):
         safe_addstr(stdscr, row + 1, 12, f"({risk_expl})", curses.color_pair(risk_color))
         row += 3
 
-        # --- IMPORTANT FIX: "effective capacity" is RAM + ZRAM ONLY (disk swap not included) ---
         safe_addstr(stdscr, row, 2, "Effective capacity (RAM + ZRAM)", curses.A_BOLD)
         safe_addstr(
             stdscr, row + 1, 4,
@@ -406,22 +389,18 @@ def main(stdscr):
 
         safe_addstr(stdscr, row, 2, f"History (auto length: {dyn_hist_len} samples) [RAM+ZRAM models]", curses.A_BOLD)
 
-        # RAM used%
         s = sparkline(list(hist_ram), graph_w)
         safe_addstr(stdscr, row + 1, 2, "RAM%     ")
         safe_addstr(stdscr, row + 1, 11, s, curses.color_pair(color_for_ratio(ram_used_ratio)))
 
-        # ZRAM phys%
         s = sparkline(list(hist_zram), graph_w)
         safe_addstr(stdscr, row + 2, 2, "ZRAM%phys")
         safe_addstr(stdscr, row + 2, 11, s, curses.color_pair(color_for_ratio(zram_phys_ratio)))
 
-        # Other swap% (disk swap)
         s = sparkline(list(hist_other_swap), graph_w)
         safe_addstr(stdscr, row + 3, 2, "SWAP%oth ")
         safe_addstr(stdscr, row + 3, 11, s, curses.color_pair(color_for_ratio(other_swap_ratio)))
 
-        # Free% (cons/opt) — invert for color (low free = red)
         s1 = sparkline(list(hist_free_cons_mem), graph_w)
         s2 = sparkline(list(hist_free_opt_mem), graph_w)
         safe_addstr(stdscr, row + 4, 2, "FREE%cons")
@@ -430,7 +409,6 @@ def main(stdscr):
         safe_addstr(stdscr, row + 5, 11, s2, curses.color_pair(color_for_ratio(1.0 - free_opt_mem_ratio)))
 
         safe_addstr(stdscr, h - 1, 2, "q=quit  +=faster  -=slower", curses.color_pair(4))
-
         stdscr.refresh()
 
 
