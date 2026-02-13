@@ -27,10 +27,10 @@ Egyszeri riport, amely:
 ### Konzervatív arányok
 
 | Algoritmus | Becsült arány |
-|------------|--------------|
-| lz4        | 2.0x |
-| lzo        | 2.2x |
-| zstd       | 3.0x |
+| ---------- | ------------- |
+| lz4        | 2.0x          |
+| lzo        | 2.2x          |
+| zstd       | 3.0x          |
 
 Ez stabil, tervezésre alkalmas becslés.
 
@@ -62,11 +62,11 @@ A history hossza automatikusan igazodik a terminál szélességéhez.
 
 ### Billentyűk
 
-| Billentyű | Funkció |
-|-----------|----------|
-| q         | Kilépés |
+| Billentyű | Funkció            |
+| --------- | ------------------ |
+| q         | Kilépés            |
 | +         | Gyorsabb frissítés |
-| -         | Lassabb frissítés |
+| -         | Lassabb frissítés  |
 
 ---
 
@@ -123,7 +123,7 @@ Példa:
 2 GB ZRAM (zstd → 3.0x)
 
 ZRAM logikai kapacitás ≈ 2 × 3 = 6 GB  
-Teljes elméleti eltárolható memória ≈ 8 + 6 = 14 GB
+Teljes elméleti eltárolható memória ≈ (8-2) + 6 = 12 GB
 
 Ez tervezésre alkalmas érték.
 
